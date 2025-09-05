@@ -158,34 +158,47 @@ bot.on('message', safeHandler(async (ctx) => {
   const userId = message.from.id;
   const chatId = message.chat.id;
 
-  // Если добавили бота в чат, проверяем разрешение
-  if (message.new_chat_members) {
-    const isBotAdded = message.new_chat_members.some(m => m.is_bot && m.id === ctx.botInfo.id);
-    if (isBotAdded && !ALLOWED_CHATS.includes(chatId)) {
-      const warningText = `🚫 Я не могу работать в этом чате! Этот чат не разрешён.\n\n` +
-                          `Если есть вопросы, вы можете обратиться к <a href="https://t.me/red_star_development">Красной звезде</a>.`;
-      await ctx.reply(warningText, { parse_mode: 'HTML', disable_web_page_preview: true });
+  // ————— Проверка разрешённого чата —————
+  if (!ALLOWED_CHATS.includes(chatId)) {
+    try {
+      await ctx.reply(
+        '🚫 Этот чат не разрешён для работы бота.\n' +
+        'Если вы хотите, чтобы бот работал здесь, обратитесь к <a href="https://t.me/red_star_development">Красной звезде</a>.',
+        { parse_mode: 'HTML', disable_web_page_preview: true }
+      );
       await new Promise(r => setTimeout(r, 2000));
       return await ctx.leaveChat();
+    } catch (err) {
+      console.error('Ошибка при выходе из запрещённого чата:', err);
+      return;
     }
   }
 
-  // Ответ админа пользователю
+  // ————— Ответ админа пользователю —————
   if (ADMIN_IDS.includes(userId) && message.reply_to_message?.forward_from?.id) {
     const originalSenderId = message.reply_to_message.forward_from.id;
     let responseText = `🔹 Ответ от ${ADMIN_NAMES[userId]}:\n\n${message.text || message.caption || ''}`;
     await ctx.telegram.sendMessage(originalSenderId, responseText);
-    if (message.photo) await ctx.telegram.sendPhoto(originalSenderId, message.photo[message.photo.length - 1].file_id, { caption: message.caption });
-    if (message.sticker) await ctx.telegram.sendSticker(originalSenderId, message.sticker.file_id);
+    if (message.photo) {
+      await ctx.telegram.sendPhoto(
+        originalSenderId,
+        message.photo[message.photo.length - 1].file_id,
+        { caption: message.caption }
+      );
+    }
+    if (message.sticker) {
+      await ctx.telegram.sendSticker(originalSenderId, message.sticker.file_id);
+    }
     return await ctx.reply('✅ Ваш ответ был отправлен пользователю.');
   }
 
-  // Пересылка сообщений от обычных пользователей в админский чат
+  // ————— Пересылка сообщений обычных пользователей в админский чат —————
   if (!ADMIN_IDS.includes(userId) && chatId > 0 && !message.text?.startsWith('/')) {
     const userName = message.from.first_name || 'Без имени';
     const userUsername = message.from.username ? '@' + message.from.username : 'нет username';
     const time = new Date().toLocaleString('ru-RU');
-    const caption = `📩 Новое сообщение из ЛС\n👤 Имя: ${userName}\n🔖 Username: ${userUsername}\n🆔 ID: ${message.from.id}\n⏰ Время: ${time}`;
+    const caption = `📩 Новое сообщение из ЛС\n👤 Имя: ${userName}\n🔖 Username: ${userUsername}\n🆔 ID: ${userId}\n⏰ Время: ${time}`;
+
     await ctx.forwardMessage(ADMIN_CHAT_ID, chatId, message.message_id);
     await ctx.telegram.sendMessage(ADMIN_CHAT_ID, caption, { parse_mode: 'HTML', disable_web_page_preview: true });
   }
