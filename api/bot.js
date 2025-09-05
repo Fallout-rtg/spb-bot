@@ -4,7 +4,7 @@ const BOT_TOKEN = process.env.BOT_TOKEN;
 
 const CHANNEL_ID = -1002696885166;
 const CHAT_ID = -1002899007927;
-const ADMIN_CHAT_ID = -4969760870;
+const ADMIN_CHAT_ID = -1002974532347;
 const ADMIN_IDS = [2032240231, 1465194766];
 const ADMIN_NAMES = {
   2032240231: 'Советчик 📜',
