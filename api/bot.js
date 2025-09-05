@@ -116,15 +116,13 @@ bot.help(safeHandler(async (ctx) => {
 bot.command('test', safeHandler(async (ctx) => await ctx.reply('✅ Бот активен и работает в штатном режиме!')));
 
 bot.command('info', safeHandler(async (ctx) => {
-  const infoText = `⚙️ *О боте*\nВерсия: 0.0.1\nИИ: Red-AI 0.1\nРазработчики: Красная звезда`;
-
-  const keyboard = Markup.inlineKeyboard([
-    [Markup.button.url('Красная звезда', 'https://t.me/red_star_development')]
-  ]);
+  const infoText = `⚙️ *О боте*\n` +
+                   `Версия: 0.0.1\n` +
+                   `ИИ: Red-AI 0.1\n` +
+                   `Разработчики: [Красная звезда](https://t.me/red_star_development)`;
 
   await ctx.reply(infoText, {
     parse_mode: 'Markdown',
-    reply_markup: keyboard.reply_markup,
     disable_web_page_preview: true
   });
 }));
