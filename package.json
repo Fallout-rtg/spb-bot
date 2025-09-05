@@ -1,12 +1,14 @@
 {
   "name": "spb-bot",
   "version": "1.0.0",
-  "description": "Telegram bot for auto-commenting rules under posts in @spektrminda channel",
-  "main": "api/bot.js",
-  "dependencies": {
-    "node-telegram-bot-api": "^0.66.0"
-  },
   "scripts": {
-    "start": "node api/bot.js"
+    "dev": "vercel dev"
+  },
+  "dependencies": {
+    "telegraf": "^4.16.3",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "vercel": "^28.10.1"
   }
 }
