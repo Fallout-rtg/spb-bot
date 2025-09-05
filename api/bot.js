@@ -80,6 +80,7 @@ bot.start(safeHandler(async (ctx) => {
   await ctx.reply(greeting);
 }));
 
+// —————————— Команда /help ——————————
 bot.help(safeHandler(async (ctx) => {
   const userId = ctx.from.id;
   const chatType = ctx.chat?.type;
@@ -91,8 +92,8 @@ bot.help(safeHandler(async (ctx) => {
         `/help - показать это сообщение\n` +
         `/info - информация о боте\n` +
         `/test - проверка работоспособности\n` +
-        `/+id <ID> - добавить чат в разрешённые\n` +
-        `/-id <ID> - удалить чат из разрешённых\n` +
+        "/+id `<ID_чата>` - добавить чат в разрешённые\n" +
+        "/-id `<ID_чата>` - удалить чат из разрешённых\n" +
         `/allowed_chats - показать список разрешённых чатов\n\n` +
         `Функции для админов:\n` +
         `• Ответ на пересланные сообщения от пользователей\n` +
