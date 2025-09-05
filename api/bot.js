@@ -136,12 +136,16 @@ bot.command('comment_text', safeHandler(async (ctx) => {
 // —————————— Команда /info ——————————
 bot.command('info', safeHandler(async (ctx) => {
   const infoText = `
-⚙️ О боте
+⚙️ <b>О боте</b>
 Версия: 0.0.1
 ИИ: Red-AI 0.1
-Разработчики: Красная звезда (https://t.me/red_star_development)
+Разработчики: <a href="https://t.me/red_star_development">Красная звезда</a>
 `;
-  await ctx.reply(infoText, { parse_mode: 'HTML', disable_web_page_preview: true });
+
+  await ctx.reply(infoText, {
+    parse_mode: 'HTML',
+    disable_web_page_preview: true
+  });
 }));
 
 // —————————— Тестовая команда ——————————
