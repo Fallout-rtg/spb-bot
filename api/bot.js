@@ -188,10 +188,16 @@ bot.on('channel_post', safeHandler(async (ctx) => {
 
 module.exports = async (req, res) => {
   try {
-    await bot.handleUpdate(req.body, res);
-    res.status(200).send('OK');
+    if (req.method === 'POST') {
+      await bot.handleUpdate(req.body); // НЕ передаем res
+      res.status(200).send('OK');       // ответ один раз
+    } else {
+      res.status(200).send('Bot is running.');
+    }
   } catch (error) {
     console.error('Ошибка при обработке update:', error);
-    res.status(500).send('Internal Server Error');
+    if (!res.headersSent) {
+      res.status(500).send('Internal Server Error');
+    }
   }
 };
