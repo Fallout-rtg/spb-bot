@@ -158,23 +158,21 @@ bot.on('message', safeHandler(async (ctx) => {
   const userId = message.from.id;
   const chatId = message.chat.id;
 
-  // ————— Проверка разрешённого чата —————
-  if (!ALLOWED_CHATS.includes(chatId)) {
-    try {
+  // ————— Проверка нового чата при добавлении бота —————
+  if (message.new_chat_members) {
+    const isBotAdded = message.new_chat_members.some(m => m.is_bot && m.id === ctx.botInfo.id);
+    if (isBotAdded && !ALLOWED_CHATS.includes(chatId)) {
       await ctx.reply(
-        '🚫 Этот чат не разрешён для работы бота.\n' +
-        'Если вы хотите, чтобы бот работал здесь, обратитесь к <a href="https://t.me/red_star_development">Красной звезде</a>.',
+        '🚫 Я не могу работать в этом чате! Этот чат не разрешен.\n' +
+        'Если хотите, чтобы бот работал здесь, обратитесь к <a href="https://t.me/red_star_development">Красной звезде</a>.',
         { parse_mode: 'HTML', disable_web_page_preview: true }
       );
       await new Promise(r => setTimeout(r, 2000));
       return await ctx.leaveChat();
-    } catch (err) {
-      console.error('Ошибка при выходе из запрещённого чата:', err);
-      return;
     }
   }
 
-  // ————— Ответ админа пользователю —————
+  // ————— Ответ админа пользователю (по пересланному сообщению) —————
   if (ADMIN_IDS.includes(userId) && message.reply_to_message?.forward_from?.id) {
     const originalSenderId = message.reply_to_message.forward_from.id;
     let responseText = `🔹 Ответ от ${ADMIN_NAMES[userId]}:\n\n${message.text || message.caption || ''}`;
