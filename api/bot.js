@@ -59,10 +59,12 @@ bot.start(safeHandler(async (ctx) => {
 // —————————— Команда /help ——————————
 bot.help(safeHandler(async (ctx) => {
   const userId = ctx.from.id;
+  const chatType = ctx.chat?.type;
 
-  if (ADMIN_IDS.includes(userId)) {
-    const adminHelpText = `
-🛠 Команды админов:
+  if (chatType === 'private') {
+    if (ADMIN_IDS.includes(userId)) {
+      const adminHelpText = `
+<b>🛠 Команды админов:</b>
 
 /start — запуск бота
 /help — показать это сообщение
@@ -73,23 +75,24 @@ bot.help(safeHandler(async (ctx) => {
 /allowed_chats — показать список разрешённых чатов
 /comment_text — показать текст комментариев под постами
 
-Функции для админов:
+<b>Функции для админов:</b>
 • Ответ на пересланные сообщения от пользователей
 • Ответ по ссылке на сообщение формата t.me/c/...
-`;
-    await ctx.reply(adminHelpText, { parse_mode: 'HTML', disable_web_page_preview: true });
-  } else {
-    const userHelpText = `
-ℹ️ Помощь по боту:
+      `;
+      await ctx.reply(adminHelpText, { parse_mode: 'HTML', disable_web_page_preview: true });
+    } else {
+      const userHelpText = `
+ℹ️ <b>Помощь по боту:</b>
 
 Я — автоматический бот для канала. Моя задача — добавлять комментарии с правилами под каждым постом.
 
 Команды:
-/start — запустить бота
-/help — показать это сообщение
-/info — информация о боте
-`;
-    await ctx.reply(userHelpText, { parse_mode: 'HTML', disable_web_page_preview: true });
+/start - запустить бота
+/help - показать это сообщение
+/info - информация о боте
+      `;
+      await ctx.reply(userHelpText, { parse_mode: 'HTML', disable_web_page_preview: true });
+    }
   }
 }));
 
