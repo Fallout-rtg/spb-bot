@@ -255,34 +255,35 @@ bot.on('message', safeHandler(async (ctx) => {
   }
 }));
 
-// —————————— Комментарии под постами канала в обсуждении ——————————
+// Обработка новых постов в канале
 bot.on('channel_post', safeHandler(async (ctx) => {
-  try {
-    const post = ctx.channelPost;
+  const post = ctx.channelPost;
+  const postChannelId = post.chat.id;
 
-    // Проверяем, есть ли linked_chat_id для обсуждения
-    const discussionId = ctx.chat.linked_chat_id;
-    if (!discussionId) {
-      console.log('У канала нет обсуждения, комментарий не отправлен');
-      return;
+  // Проверяем, что это нужный канал
+  if (postChannelId === CHANNEL_ID) {
+    try {
+      // Отправляем комментарий в группу обсуждения в ответ на этот пост
+      await ctx.telegram.sendMessage(
+        CHAT_ID, // группа обсуждения
+        COMMENT_TEXT,
+        {
+          parse_mode: 'HTML',
+          reply_to_message_id: post.message_id,
+          disable_web_page_preview: true
+        }
+      );
+
+      // Отчёт в админский чат
+      await ctx.telegram.sendMessage(
+        ADMIN_CHAT_ID,
+        `✅ Комментарий добавлен под постом канала (ID: ${post.message_id})`,
+        { parse_mode: 'HTML', disable_web_page_preview: true }
+      );
+
+    } catch (error) {
+      console.error('Ошибка при отправке комментария в обсуждение:', error);
     }
-
-    // Отправляем комментарий в обсуждение, отвечая на пост
-    const sentMessage = await ctx.telegram.sendMessage(discussionId, COMMENT_TEXT, {
-      parse_mode: 'HTML',
-      disable_web_page_preview: true,
-      reply_to_message_id: post.message_id
-    });
-
-    console.log(`Комментарий к посту ${post.message_id} отправлен в обсуждение`);
-
-    // Отчёт в админский чат
-    const reportText = `✅ Комментарий под постом ${post.message_id} успешно отправлен в обсуждение канала.`;
-    await ctx.telegram.sendMessage(ADMIN_CHAT_ID, reportText);
-
-  } catch (error) {
-    console.error('Ошибка при добавлении комментария в обсуждение:', error);
-    await ctx.telegram.sendMessage(ADMIN_CHAT_ID, `❌ Ошибка при добавлении комментария: ${error.message}`);
   }
 }));
 
