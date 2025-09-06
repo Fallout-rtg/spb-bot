@@ -318,6 +318,7 @@ bot.on('message', safeHandler(async (ctx) => {
   }
 }));
 
+// ----------------- Экспорт модуля -----------------
 module.exports = async (req, res) => {
   try {
     if (req.method === 'POST') {
