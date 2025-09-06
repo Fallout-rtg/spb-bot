@@ -257,30 +257,35 @@ bot.on('message', safeHandler(async (ctx) => {
 }));
 
 // Обработка новых постов в канале
-bot.on("message", async (ctx) => {
-  const msg = ctx.message;
+bot.on('channel_post', safeHandler(async (ctx) => {
+  const post = ctx.channelPost;
+  const channelUsername = post.chat.username;
 
-  if (msg.chat.id.toString() !== CHAT_ID.toString()) return;
-  if (!msg.forward_from_chat) return;
-  if (msg.forward_from_chat.id.toString() !== CHANNEL_ID.toString()) return;
+  // Проверяем, что это нужный канал
+  if (channelUsername !== 'spektrminda') return;
 
   try {
-    const comment = await bot.telegram.sendMessage(CHAT_ID, COMMENT_TEXT, {
-      reply_to_message_id: msg.message_id,
-      parse_mode: "HTML",
+    // Отправляем комментарий в обсуждение канала
+    await ctx.telegram.sendMessage(CHAT_ID, COMMENT_TEXT, {
+      parse_mode: 'HTML',
+      reply_to_message_id: post.message_id,
       disable_web_page_preview: true
     });
 
-    await bot.telegram.sendMessage(
+    // Формируем ссылку на пост
+    const postLink = `https://t.me/${channelUsername}/${post.message_id}`;
+
+    // Отчёт в админский чат
+    await ctx.telegram.sendMessage(
       ADMIN_CHAT_ID,
-      `✅ Комментарий добавлен.\n` +
-      `📌 Пост: https://t.me/${msg.forward_from_chat.username}/${msg.forward_from_message_id}\n` +
-      `💬 Комментарий: https://t.me/c/${String(CHAT_ID).slice(4)}/${comment.message_id}`
+      `✅ Комментарий с правилами добавлен к посту.\n📌 Пост: ${postLink}\n📌 Комментарий отправлен в обсуждение.`,
+      { parse_mode: 'HTML', disable_web_page_preview: true }
     );
+
   } catch (err) {
-    console.error("Ошибка при отправке комментария:", err);
+    console.error('Ошибка при добавлении комментария в обсуждение:', err.message);
   }
-});
+}));
 
 // —————————— Экспорт модуля для сервера ——————————
 module.exports = async (req, res) => {
