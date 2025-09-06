@@ -257,27 +257,35 @@ bot.on('message', safeHandler(async (ctx) => {
 }));
 
 // Обработка новых постов в канале
-bot.on("message", async (ctx) => {
-  const msg = ctx.message;
+bot.on("update", async (update) => {
+  try {
+    if (update.message && update.message.chat.id.toString() === CHAT_ID.toString()) {
+      const message = update.message;
 
-  if (msg.chat.id.toString() === CHAT_ID.toString() && msg.forward_from_chat) {
-    if (msg.forward_from_chat.id.toString() === CHANNEL_ID.toString()) {
-      try {
-        const comment = await ctx.telegram.sendMessage(CHAT_ID, COMMENT_TEXT, {
-          reply_to_message_id: msg.message_id,
-          parse_mode: "HTML"
-        });
+      // Проверяем, что сообщение переслано из целевого канала
+      if (message.forward_from_chat && message.forward_from_chat.id.toString() === CHANNEL_ID.toString()) {
+        try {
+          // Отправляем комментарий в ответ на пост
+          const comment = await bot.telegram.sendMessage(CHAT_ID, COMMENT_TEXT, {
+            reply_to_message_id: message.message_id,
+            parse_mode: "HTML",
+            disable_web_page_preview: true
+          });
 
-        await ctx.telegram.sendMessage(
-          ADMIN_CHAT_ID,
-          `✅ Комментарий добавлен.\n` +
-          `📌 Пост: https://t.me/${CHANNEL_USERNAME}/${msg.forward_from_message_id}\n` +
-          `💬 Комментарий: https://t.me/c/${String(CHAT_ID).slice(4)}/${comment.message_id}`
-        );
-      } catch (err) {
-        console.error("Ошибка при отправке комментария:", err);
+          // Отчёт в админ-чат
+          await bot.telegram.sendMessage(
+            ADMIN_CHAT_ID,
+            `✅ Комментарий добавлен.\n` +
+            `📌 Пост: https://t.me/${CHANNEL_USERNAME}/${message.forward_from_message_id}\n` +
+            `💬 Комментарий: https://t.me/c/${String(CHAT_ID).slice(4)}/${comment.message_id}`
+          );
+        } catch (err) {
+          console.error("Ошибка при отправке комментария:", err);
+        }
       }
     }
+  } catch (err) {
+    console.error("Ошибка в обработчике обсуждений:", err);
   }
 });
 
