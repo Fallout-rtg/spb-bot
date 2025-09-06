@@ -261,7 +261,7 @@ bot.on('message', safeHandler(async (ctx) => {
   const msg = ctx.message;
   const chatId = msg.chat.id;
 
-  if (chatId !== CHAT_ID) return; // Только дискуссия нашего канала
+  if (chatId !== CHAT_ID) return; // Только дискуссия канала
 
   if (msg.forward_from_chat?.id === CHANNEL_ID && msg.forward_from_message_id) {
     try {
