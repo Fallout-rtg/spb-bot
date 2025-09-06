@@ -256,38 +256,50 @@ bot.on('message', safeHandler(async (ctx) => {
   }
 }));
 
-// Обработка новых постов в канале
+// Обработка постов канала и добавление комментария в обсуждение
 bot.on('channel_post', safeHandler(async (ctx) => {
   const post = ctx.channelPost;
 
-  // Проверяем, что это нужный канал
   if (post.chat.username === 'spektrminda' && post.message_id) {
     try {
-      // Отправляем комментарий в обсуждение
+      const discussionMessageId = post.message_thread_id; // ID связанного сообщения в обсуждении
+
+      if (!discussionMessageId) {
+        // Нет обсуждения, отчёт в админский чат
+        await ctx.telegram.sendMessage(
+          ADMIN_CHAT_ID,
+          `❌ Не удалось найти связанное сообщение в обсуждении для поста ${post.message_id} канала ${post.chat.username}`,
+          { parse_mode: 'HTML', disable_web_page_preview: true }
+        );
+        return;
+      }
+
+      // Отправка комментария в обсуждение
       const sent = await ctx.telegram.sendMessage(
-        CHAT_ID,
-        COMMENT_TEXT,
+        CHAT_ID,        // ID группы обсуждения
+        COMMENT_TEXT,   // Текст комментария
         {
           parse_mode: 'HTML',
-          reply_to_message_id: post.message_id,
+          reply_to_message_id: discussionMessageId,
           disable_web_page_preview: true
         }
       );
 
-      // Отчёт в админский чат
+      // Формируем ссылки на пост и комментарий
       const postLink = `https://t.me/${post.chat.username}/${post.message_id}`;
       const commentLink = `https://t.me/c/${String(CHAT_ID).slice(4)}/${sent.message_id}`;
 
+      // Отчёт в админский чат
       await ctx.telegram.sendMessage(
         ADMIN_CHAT_ID,
-        `✅ Комментарий отправлен!\n\n` +
+        `✅ Комментарий успешно отправлен!\n\n` +
         `🔹 Пост: <a href="${postLink}">ссылка</a>\n` +
         `🔹 Комментарий: <a href="${commentLink}">ссылка</a>`,
         { parse_mode: 'HTML', disable_web_page_preview: true }
       );
 
     } catch (error) {
-      // Если не получилось отправить комментарий
+      // Ошибка при отправке комментария
       await ctx.telegram.sendMessage(
         ADMIN_CHAT_ID,
         `❌ Не удалось отправить комментарий!\nОшибка: ${error.message}`,
