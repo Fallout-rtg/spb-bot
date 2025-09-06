@@ -255,7 +255,7 @@ bot.on('message', safeHandler(async (ctx) => {
   }
 }));
 
-// —————————— Комментарии под постами в канале ——————————
+// —————————— Комментарии под постами канала в обсуждении ——————————
 bot.on('channel_post', safeHandler(async (ctx) => {
   try {
     const post = ctx.channelPost;
