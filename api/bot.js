@@ -257,17 +257,41 @@ bot.on('message', safeHandler(async (ctx) => {
 }));
 
 // Обработка новых постов в канале
+// Улучшенный обработчик: ищем посты канала в группе обсуждения и отвечаем под ними + отчёт админам.
+// Требования: должны быть определены переменные CHAT_ID, CHANNEL_ID, CHANNEL_USERNAME, ADMIN_CHAT_ID, COMMENT_TEXT и функция safeHandler.
+
+const commentedOriginals = new Set(); // runtime cache, чтобы не комментировать дважды
+
 bot.on('message', safeHandler(async (ctx) => {
   const msg = ctx.message;
+  if (!msg) return;
 
-  // Проверяем, что сообщение пришло из группы обсуждения
+  // Работать только в группе обсуждения
   if (msg.chat.id !== CHAT_ID) return;
 
-  // Проверяем, что это сообщение от канала (новый пост)
-  if (!msg.sender_chat || msg.sender_chat.username !== CHANNEL_USERNAME) return;
+  // Игнорируем сообщения ботов (включая свои)
+  if (msg.from && msg.from.is_bot) return;
+
+  // Определяем, пришло ли сообщение от канала:
+  // - как пересылка: forward_from_chat
+  // - как сообщение от sender_chat (иногда появляется для сообщений канала в обсуждении)
+  const fromForward = Boolean(msg.forward_from_chat && (msg.forward_from_chat.id === CHANNEL_ID || msg.forward_from_chat.username === CHANNEL_USERNAME));
+  const fromSenderChat = Boolean(msg.sender_chat && (msg.sender_chat.id === CHANNEL_ID || msg.sender_chat.username === CHANNEL_USERNAME));
+
+  if (!fromForward && !fromSenderChat) return; // не пост канала
+
+  // Попытка получить оригинальный ID поста в канале
+  // Обычно присутствует forward_from_message_id при пересылках из канала
+  const originalChannelMessageId = msg.forward_from_message_id || null;
+
+  // Ключ дедупа (если есть оригинальный ID — используем его, иначе используем id сообщения в обсуждении)
+  const dedupeKey = `${CHANNEL_ID}:${originalChannelMessageId || msg.message_id}`;
+  if (commentedOriginals.has(dedupeKey)) return;
+  // Помечаем как обработанное (runtime). Это предотвращает двойную отправку в короткий промежуток.
+  commentedOriginals.add(dedupeKey);
 
   try {
-    // Отправляем комментарий с правилами в ответ на сообщение
+    // Отправляем комментарий в ответ на найденное сообщение в обсуждении
     const commentMsg = await ctx.telegram.sendMessage(
       CHAT_ID,
       COMMENT_TEXT,
@@ -278,27 +302,40 @@ bot.on('message', safeHandler(async (ctx) => {
       }
     );
 
-    // Ссылки для отчёта
-    const channelLink = `https://t.me/${CHANNEL_USERNAME}/${msg.message_id}`;
-    const commentLink = `https://t.me/c/${CHAT_ID.toString().slice(4)}/${commentMsg.message_id}`;
+    // Формируем ссылки для отчёта.
+    // Ссылка на пост в самом канале (если известен originalChannelMessageId и есть username канала)
+    let channelLink = null;
+    if (CHANNEL_USERNAME && originalChannelMessageId) {
+      channelLink = `https://t.me/${CHANNEL_USERNAME}/${originalChannelMessageId}`;
+    }
 
-    // Отчёт админам
+    // Ссылка на сообщение в обсуждении (комментарий бота)
+    const discussionShortId = CHAT_ID.toString().startsWith('-100') ? CHAT_ID.toString().slice(4) : CHAT_ID.toString().replace('-', '');
+    const commentLink = `https://t.me/c/${discussionShortId}/${commentMsg.message_id}`;
+
+    // Если не получилось получить прямой линк на каналный пост, как fallback используем ссылку на сообщение в обсуждении (оригинал там тоже виден)
+    const postLinkForReport = channelLink || `https://t.me/c/${discussionShortId}/${msg.message_id}`;
+
+    // Отчёт админам с двумя ссылками (пост и комментарий)
     await ctx.telegram.sendMessage(
       ADMIN_CHAT_ID,
-      `✅ Комментарий под постом успешно отправлен.\n` +
-      `Пост канала: <a href="${channelLink}">ссылка</a>\n` +
-      `Комментарий бота: <a href="${commentLink}">ссылка</a>`,
-      { parse_mode: 'HTML' }
+      `✅ Комментарий отправлен.\nПост: <a href="${postLinkForReport}">ссылка</a>\nКомментарий: <a href="${commentLink}">ссылка</a>`,
+      { parse_mode: 'HTML', disable_web_page_preview: true }
     );
 
-  } catch (error) {
-    console.error('Ошибка при отправке комментария:', error);
-    await ctx.telegram.sendMessage(
-      ADMIN_CHAT_ID,
-      `⚠️ Ошибка при отправке комментария под постом: ${error.message}`,
-      { parse_mode: 'HTML' }
-    );
+  } catch (err) {
+    console.error('Ошибка при отправке комментария в обсуждении:', err);
+    // Сообщаем админам об ошибке
+    try {
+      await ctx.telegram.sendMessage(ADMIN_CHAT_ID, `❌ Ошибка при отправке комментария: ${err.message}`, { parse_mode: 'HTML' });
+    } catch (e) {
+      console.error('Ошибка при отправке сообщения об ошибке админам:', e);
+    }
   }
+
+  // Очистка кеша через определённое время (небольшой TTL), чтобы не расти бесконечно.
+  // Через 1 час разрешаем повторную обработку того же поста (если бот перезапустился — кеш упадёт).
+  setTimeout(() => commentedOriginals.delete(dedupeKey), 1000 * 60 * 60);
 }));
 
 // —————————— Экспорт модуля для сервера ——————————
