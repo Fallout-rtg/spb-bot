@@ -2,7 +2,6 @@ const { Telegraf } = require('telegraf');
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 
-// Проверка наличия токена
 if (!BOT_TOKEN) {
   console.error('❌ BOT_TOKEN не установлен!');
 }
