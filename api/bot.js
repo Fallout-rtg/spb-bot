@@ -257,35 +257,28 @@ bot.on('message', safeHandler(async (ctx) => {
 }));
 
 // Обработка новых постов в канале
-bot.on("update", async (update) => {
+bot.on("message", async (ctx) => {
+  const msg = ctx.message;
+
+  if (msg.chat.id.toString() !== CHAT_ID.toString()) return;
+  if (!msg.forward_from_chat) return;
+  if (msg.forward_from_chat.id.toString() !== CHANNEL_ID.toString()) return;
+
   try {
-    if (update.message && update.message.chat.id.toString() === CHAT_ID.toString()) {
-      const message = update.message;
+    const comment = await bot.telegram.sendMessage(CHAT_ID, COMMENT_TEXT, {
+      reply_to_message_id: msg.message_id,
+      parse_mode: "HTML",
+      disable_web_page_preview: true
+    });
 
-      // Проверяем, что сообщение переслано из целевого канала
-      if (message.forward_from_chat && message.forward_from_chat.id.toString() === CHANNEL_ID.toString()) {
-        try {
-          // Отправляем комментарий в ответ на пост
-          const comment = await bot.telegram.sendMessage(CHAT_ID, COMMENT_TEXT, {
-            reply_to_message_id: message.message_id,
-            parse_mode: "HTML",
-            disable_web_page_preview: true
-          });
-
-          // Отчёт в админ-чат
-          await bot.telegram.sendMessage(
-            ADMIN_CHAT_ID,
-            `✅ Комментарий добавлен.\n` +
-            `📌 Пост: https://t.me/${CHANNEL_USERNAME}/${message.forward_from_message_id}\n` +
-            `💬 Комментарий: https://t.me/c/${String(CHAT_ID).slice(4)}/${comment.message_id}`
-          );
-        } catch (err) {
-          console.error("Ошибка при отправке комментария:", err);
-        }
-      }
-    }
+    await bot.telegram.sendMessage(
+      ADMIN_CHAT_ID,
+      `✅ Комментарий добавлен.\n` +
+      `📌 Пост: https://t.me/${msg.forward_from_chat.username}/${msg.forward_from_message_id}\n` +
+      `💬 Комментарий: https://t.me/c/${String(CHAT_ID).slice(4)}/${comment.message_id}`
+    );
   } catch (err) {
-    console.error("Ошибка в обработчике обсуждений:", err);
+    console.error("Ошибка при отправке комментария:", err);
   }
 });
 
