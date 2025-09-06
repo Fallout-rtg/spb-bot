@@ -258,14 +258,32 @@ bot.on('message', safeHandler(async (ctx) => {
 // —————————— Комментарии под постами в канале ——————————
 bot.on('channel_post', safeHandler(async (ctx) => {
   try {
-    const channelId = ctx.channelPost.chat.id;
-    await ctx.telegram.sendMessage(channelId, COMMENT_TEXT, {
+    const channelPost = ctx.channelPost;
+
+    // Проверяем, есть ли обсуждение (linked_chat_id)
+    const discussionId = channelPost.chat.linked_chat_id;
+    if (!discussionId) {
+      console.log('У канала нет обсуждения, комментарий не отправлен');
+      return;
+    }
+
+    // Отправляем комментарий в обсуждение, отвечая на пост
+    const sentMessage = await ctx.telegram.sendMessage(discussionId, COMMENT_TEXT, {
       parse_mode: 'HTML',
       disable_web_page_preview: true,
-      reply_to_message_id: ctx.channelPost.message_id
+      reply_to_message_id: channelPost.message_id
     });
+
+    console.log(`Комментарий к посту ${channelPost.message_id} отправлен в обсуждение`);
+
+    // Отчёт в админский чат
+    const reportText = `✅ Комментарий под постом ${channelPost.message_id} успешно отправлен в обсуждение.`;
+    await ctx.telegram.sendMessage(ADMIN_CHAT_ID, reportText);
+
   } catch (error) {
-    console.error('Ошибка при добавлении комментария под постом:', error);
+    console.error('Ошибка при добавлении комментария в обсуждение:', error);
+    // Отчёт об ошибке в админский чат
+    await ctx.telegram.sendMessage(ADMIN_CHAT_ID, `❌ Ошибка при добавлении комментария: ${error.message}`);
   }
 }));
 
