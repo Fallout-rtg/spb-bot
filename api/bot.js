@@ -38,31 +38,30 @@ function safeHandler(handler) {
 }
 
 // —————————— Управления разрешёнными чатами ——————————
+// —————————— Массив активных чатов ——————————
+let ACTIVE_CHATS = [];
 
+// —————————— Функция проверки всех групп, где бот находится ——————————
 async function checkBotChats(bot) {
-  try {
-    for (const chatId of ALLOWED_CHATS.slice()) {
-      // Если чат удалён из ALLOWED_CHATS, покидаем его
-      if (!ALLOWED_CHATS.includes(chatId)) {
-        try {
-          await bot.telegram.sendMessage(
-            chatId,
-            '🚫 Этот чат больше не разрешён для работы бота.\n' +
-            'Если хотите, чтобы бот снова работал здесь, обратитесь к <a href="https://t.me/red_star_development">Красной звезде</a>.',
-            { parse_mode: 'HTML', disable_web_page_preview: true }
-          );
-        } catch (e) {
-          // Игнорируем ошибки, если бот не может писать в чат
-        }
-        await bot.telegram.leaveChat(chatId);
+  for (const chatId of ACTIVE_CHATS.slice()) {
+    if (!ALLOWED_CHATS.includes(chatId)) {
+      try {
+        await bot.telegram.sendMessage(
+          chatId,
+          '🚫 Этот чат больше не разрешён для работы бота.\n' +
+          'Если хотите, чтобы бот снова работал здесь, обратитесь к <a href="https://t.me/red_star_development">Красной звезде</a>.',
+          { parse_mode: 'HTML', disable_web_page_preview: true }
+        );
+      } catch (e) {
+        // Игнорируем ошибки, если бот не может писать в чат
       }
+      await bot.telegram.leaveChat(chatId);
+      ACTIVE_CHATS = ACTIVE_CHATS.filter(id => id !== chatId);
     }
-  } catch (err) {
-    console.error('Ошибка при проверке чатов бота:', err);
   }
 }
 
-// —————————— Добавление чата /ida ——————————
+// —————————— Команда /ida (добавить чат) ——————————
 bot.command('ida', safeHandler(async (ctx) => {
   if (!ADMIN_IDS.includes(ctx.from.id)) return ctx.reply('❌ Только админам.');
   const args = ctx.message.text.split(' ');
@@ -73,15 +72,13 @@ bot.command('ida', safeHandler(async (ctx) => {
   if (!ALLOWED_CHATS.includes(chatId)) {
     ALLOWED_CHATS.push(chatId);
     await ctx.reply(`✅ Чат ${chatId} добавлен.`);
-  } else {
-    return ctx.reply(`ℹ️ Чат ${chatId} уже в списке.`);
-  }
+  } else return ctx.reply(`ℹ️ Чат ${chatId} уже в списке.`);
 
   // Проверка всех чатов на актуальность
   await checkBotChats(bot);
 }));
 
-// —————————— Удаление чата /idr ——————————
+// —————————— Команда /idr (удалить чат) ——————————
 bot.command('idr', safeHandler(async (ctx) => {
   if (!ADMIN_IDS.includes(ctx.from.id)) return ctx.reply('❌ Только админам.');
   const args = ctx.message.text.split(' ');
@@ -93,20 +90,37 @@ bot.command('idr', safeHandler(async (ctx) => {
   if (index !== -1) {
     ALLOWED_CHATS.splice(index, 1);
     await ctx.reply(`✅ Чат ${chatId} удален.`);
-  } else {
-    return ctx.reply(`ℹ️ Чат ${chatId} не найден.`);
-  }
+  } else return ctx.reply(`ℹ️ Чат ${chatId} не найден.`);
 
   // Проверка всех чатов на актуальность
   await checkBotChats(bot);
 }));
 
-// —————————— Просмотр разрешённых чатов ——————————
+// —————————— Команда /allowed_chats (список разрешённых чатов) ——————————
 bot.command('allowed_chats', safeHandler(async (ctx) => {
   if (!ADMIN_IDS.includes(ctx.from.id)) return ctx.reply('❌ Только админам.');
   if (ALLOWED_CHATS.length === 0) return ctx.reply('📝 Список пуст.');
   const chatList = ALLOWED_CHATS.map(id => `• ${id}`).join('\n');
-  return ctx.reply(`📝 Разрешённые чаты:\n${chatList}`);
+  await ctx.reply(`📝 Разрешённые чаты:\n${chatList}`);
+}));
+
+// —————————— Обработка новых чатов, где добавили бота ——————————
+bot.on('new_chat_members', safeHandler(async (ctx) => {
+  const chatId = ctx.chat.id;
+  const isBotAdded = ctx.message.new_chat_members.some(m => m.is_bot && m.id === ctx.botInfo.id);
+  if (isBotAdded) {
+    ACTIVE_CHATS.push(chatId);
+
+    if (!ALLOWED_CHATS.includes(chatId)) {
+      await ctx.reply(
+        '🚫 Этот чат не разрешён для работы бота.\n' +
+        'Если хотите, чтобы бот снова работал здесь, обратитесь к <a href="https://t.me/red_star_development">Красной звезде</a>.',
+        { parse_mode: 'HTML', disable_web_page_preview: true }
+      );
+      await ctx.leaveChat();
+      ACTIVE_CHATS = ACTIVE_CHATS.filter(id => id !== chatId);
+    }
+  }
 }));
 
 // —————————— Команда /start ——————————
