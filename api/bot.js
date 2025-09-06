@@ -246,55 +246,54 @@ bot.on('message', safeHandler(async (ctx) => {
     await ctx.telegram.sendMessage(ADMIN_CHAT_ID, caption, { parse_mode: 'HTML', disable_web_page_preview: true });
   }
 
-  // ——— Работа с ссылкой на сообщение ———
-  if (isAdmin(ctx) && message.text) {
-    const match = message.text.match(/t\.me\/c\/(\d+)\/(\d+)/);
-    if (match) {
-      const targetChatId = -1000000000000 + parseInt(match[1]);
-      const targetMessageId = parseInt(match[2]);
+ // Хранилище состояния пересылки для админов
+const adminReplyState = {};
 
-      adminReplyState[userId] = { chatId: targetChatId, messageId: targetMessageId };
-      return ctx.reply('✅ Ссылка принята. Теперь отправьте содержимое для пересылки.');
-    }
+// Проверка на админа
+function isAdmin(ctx) {
+  return ADMIN_IDS.includes(ctx.from.id);
+}
+
+// Обработка ссылки на сообщение
+bot.on('text', async (ctx) => {
+  if (!isAdmin(ctx)) return;
+
+  const message = ctx.message;
+  const userId = ctx.from.id;
+
+  // Проверяем, похоже ли сообщение на ссылку t.me/c/...
+  const match = message.text.match(/t\.me\/c\/(\d+)\/(\d+)/);
+  if (match) {
+    const chatNumericId = match[1]; // ID без -100
+    const targetChatId = Number(`-100${chatNumericId}`);
+    const targetMessageId = parseInt(match[2]);
+
+    adminReplyState[userId] = { chatId: targetChatId, messageId: targetMessageId };
+    return ctx.reply('✅ Ссылка принята. Теперь отправьте содержимое для пересылки.');
   }
+});
 
-  // ——— Если ссылка уже была сохранена, пересылаем контент ———
+// Пересылка любого контента (фото, видео, текст, документ и т.д.)
+bot.on(['photo', 'video', 'document', 'animation', 'sticker', 'text'], async (ctx) => {
+  if (!isAdmin(ctx)) return;
+
+  const userId = ctx.from.id;
   const state = adminReplyState[userId];
-  if (isAdmin(ctx) && state) {
-    const { chatId: targetChatId, messageId: targetMessageId } = state;
 
-    try {
-      if (message.text) {
-        await ctx.telegram.sendMessage(targetChatId, message.text, { reply_to_message_id: targetMessageId });
-      }
-      if (message.photo) {
-        await ctx.telegram.sendPhoto(targetChatId, message.photo.at(-1).file_id, { caption: message.caption, reply_to_message_id: targetMessageId });
-      }
-      if (message.video) {
-        await ctx.telegram.sendVideo(targetChatId, message.video.file_id, { caption: message.caption, reply_to_message_id: targetMessageId });
-      }
-      if (message.sticker) {
-        await ctx.telegram.sendSticker(targetChatId, message.sticker.file_id, { reply_to_message_id: targetMessageId });
-      }
-      if (message.document) {
-        await ctx.telegram.sendDocument(targetChatId, message.document.file_id, { caption: message.caption, reply_to_message_id: targetMessageId });
-      }
-      if (message.poll) {
-        await ctx.telegram.sendPoll(
-          targetChatId,
-          message.poll.question,
-          message.poll.options.map(o => o.text),
-          { is_anonymous: message.poll.is_anonymous, type: message.poll.type, reply_to_message_id: targetMessageId }
-        );
-      }
+  if (!state) return; // если ссылка не была принята
 
-      await ctx.reply('✅ Сообщение отправлено в ответ на выбранное сообщение.');
-      delete adminReplyState[userId];
-    } catch (err) {
-      await ctx.reply(`❌ Ошибка при пересылке: ${err.message}`);
-    }
+  try {
+    await ctx.telegram.sendCopy(state.chatId, ctx.message, {
+      reply_to_message_id: state.messageId
+    });
+
+    await ctx.reply('✅ Сообщение переслано.');
+    delete adminReplyState[userId]; // сброс
+  } catch (err) {
+    console.error('Ошибка при пересылке:', err);
+    await ctx.reply(`❌ Ошибка при пересылке: ${err.description}`);
   }
-}));
+});
 
 // —————————— Обработка сообщений в дискуссии канала для комментариев ——————————
 bot.on('message', safeHandler(async (ctx) => {
