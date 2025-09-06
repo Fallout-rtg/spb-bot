@@ -343,3 +343,8 @@ module.exports = async (req, res) => {
     }
   } catch (error) {
     console.error('Ошибка при обработке update:', error);
+    if (!res.headersSent) {
+      res.status(500).send('Internal Server Error');
+    }
+  }
+};
