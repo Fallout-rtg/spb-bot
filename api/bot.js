@@ -298,15 +298,15 @@ bot.on('message', safeHandler(async (ctx) => {
   }
 }));
 
-// —————————— Пересылка сообщений по ссылке (только админы) ——————————
-const replyTargets = {};
+// —————————— Пересылка сообщений по ссылке для админов ——————————
+const replyTargets = {}; // хранилище целей для пересылки { userId: { chatId, messageId } }
 
 function parseMessageLink(link) {
   try {
     const url = new URL(link);
-    const parts = url.pathname.split('/').filter(p => p);
-    if (parts[0] === 'c' && parts.length >= 2) {
-      const chatId = parseInt('-100' + parts[1]);
+    const parts = url.pathname.split('/').filter(p => p); // ["c", "123456789", "12"]
+    if (parts[0] === 'c' && parts.length === 3) {
+      const chatId = -1000000000000 + parseInt(parts[1]); // формируем chatId
       const messageId = parseInt(parts[2]);
       return { chatId, messageId };
     }
@@ -314,54 +314,71 @@ function parseMessageLink(link) {
   return null;
 }
 
-bot.on('message', safeHandler(async (ctx) => {
-  const msg = ctx.message;
-  const userId = msg.from.id;
+// Команда для установки цели пересылки
+bot.command('set_target', restrictedCommand(async (ctx) => {
+  const args = ctx.message.text.split(' ');
+  if (args.length < 2) return ctx.reply('❌ Укажите ссылку на сообщение: /set_target <ссылка>');
+  const target = parseMessageLink(args[1]);
+  if (!target) return ctx.reply('❌ Неверная ссылка или формат.');
 
-  if (!ADMIN_IDS.includes(userId)) return;
+  replyTargets[ctx.from.id] = target;
+  await ctx.reply('✅ Цель пересылки установлена! Теперь отправьте сообщение, которое нужно переслать.');
+}, { adminOnly: true }));
 
-  if (msg.text && msg.text.startsWith('https://t.me/c/')) {
-    const parsed = parseMessageLink(msg.text.trim());
-    if (parsed) {
-      replyTargets[userId] = { ...parsed, originalLink: msg.text.trim() };
-      return await ctx.reply('✅ Ссылка принята. Теперь отправляйте сообщение для пересылки.');
-    } else {
-      return await ctx.reply('❌ Не удалось распознать ссылку. Формат: t.me/c/...');
-    }
-  }
+// Команда для отмены цели
+bot.command('cancel_target', restrictedCommand(async (ctx) => {
+  delete replyTargets[ctx.from.id];
+  await ctx.reply('✅ Цель пересылки отменена.');
+}, { adminOnly: true }));
 
-  const target = replyTargets[userId];
-  if (!target) return;
+// Обработка сообщений для пересылки
+bot.on('message', restrictedCommand(async (ctx) => {
+  const adminId = ctx.from.id;
+  if (!isAdmin(ctx)) return; // только для админов
+  if (!replyTargets[adminId]) return; // цель не установлена
+
+  const target = replyTargets[adminId];
 
   try {
-    let sentMessage;
-    if (msg.text) {
-      sentMessage = await ctx.telegram.sendMessage(target.chatId, msg.text, { reply_to_message_id: target.messageId, parse_mode: 'HTML', disable_web_page_preview: true });
-    } else if (msg.photo) {
-      sentMessage = await ctx.telegram.sendPhoto(target.chatId, msg.photo[msg.photo.length - 1].file_id, { caption: msg.caption, reply_to_message_id: target.messageId });
-    } else if (msg.video) {
-      sentMessage = await ctx.telegram.sendVideo(target.chatId, msg.video.file_id, { caption: msg.caption, reply_to_message_id: target.messageId });
-    } else if (msg.animation) {
-      sentMessage = await ctx.telegram.sendAnimation(target.chatId, msg.animation.file_id, { caption: msg.caption, reply_to_message_id: target.messageId });
-    } else if (msg.document) {
-      sentMessage = await ctx.telegram.sendDocument(target.chatId, msg.document.file_id, { caption: msg.caption, reply_to_message_id: target.messageId });
-    } else if (msg.poll) {
-      sentMessage = await ctx.telegram.sendPoll(target.chatId, msg.poll.question, msg.poll.options.map(o => o.text), { is_anonymous: msg.poll.is_anonymous, type: msg.poll.type, allows_multiple_answers: msg.poll.allows_multiple_answers, reply_to_message_id: target.messageId });
-    } else {
-      return await ctx.reply('❌ Тип сообщения не поддерживается для пересылки.');
+    // Текст
+    if (ctx.message.text) {
+      await ctx.telegram.sendMessage(target.chatId, ctx.message.text, { reply_to_message_id: target.messageId });
+    }
+    // Фото
+    else if (ctx.message.photo) {
+      await ctx.telegram.sendPhoto(target.chatId, ctx.message.photo[ctx.message.photo.length - 1].file_id, { caption: ctx.message.caption, reply_to_message_id: target.messageId });
+    }
+    // Видео
+    else if (ctx.message.video) {
+      await ctx.telegram.sendVideo(target.chatId, ctx.message.video.file_id, { caption: ctx.message.caption, reply_to_message_id: target.messageId });
+    }
+    // Документы
+    else if (ctx.message.document) {
+      await ctx.telegram.sendDocument(target.chatId, ctx.message.document.file_id, { caption: ctx.message.caption, reply_to_message_id: target.messageId });
+    }
+    // Стикеры
+    else if (ctx.message.sticker) {
+      await ctx.telegram.sendSticker(target.chatId, ctx.message.sticker.file_id, { reply_to_message_id: target.messageId });
+    }
+    // Анимированные GIF
+    else if (ctx.message.animation) {
+      await ctx.telegram.sendAnimation(target.chatId, ctx.message.animation.file_id, { caption: ctx.message.caption, reply_to_message_id: target.messageId });
+    }
+    // Опросы
+    else if (ctx.message.poll) {
+      const poll = ctx.message.poll;
+      await ctx.telegram.sendPoll(target.chatId, poll.question, poll.options.map(o => o.text), { is_anonymous: poll.is_anonymous, type: poll.type, reply_to_message_id: target.messageId });
+    }
+    else {
+      return ctx.reply('❌ Этот тип сообщения пока не поддерживается.');
     }
 
-    const postLink = target.originalLink;
-    const commentLink = `https://t.me/c/${String(target.chatId).slice(4)}/${sentMessage.message_id}`;
-
-    await ctx.telegram.sendMessage(ADMIN_CHAT_ID, `✅ Сообщение переслано!\nПост: ${postLink}\nКомментарий: ${commentLink}`, { parse_mode: 'HTML', disable_web_page_preview: true });
-    await ctx.reply('✅ Сообщение успешно отправлено!');
-    delete replyTargets[userId];
+    await ctx.reply('✅ Сообщение успешно переслано!');
   } catch (err) {
-    await ctx.reply(`❌ Не удалось переслать сообщение. Ошибка: ${err.message}`);
-    await ctx.telegram.sendMessage(ADMIN_CHAT_ID, `❌ Ошибка пересылки сообщения для ${ctx.from.first_name} (ID: ${userId})\nОшибка: ${err.message}`, { parse_mode: 'HTML', disable_web_page_preview: true });
+    console.error('Ошибка при пересылке:', err);
+    await ctx.reply(`❌ Ошибка при пересылке: ${err.message}`);
   }
-}));
+}, { adminOnly: true }));
 
 // —————————— Экспорт модуля для сервера ——————————
 module.exports = async (req, res) => {
