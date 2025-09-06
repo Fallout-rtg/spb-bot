@@ -60,6 +60,69 @@ function restrictedCommand(handler, { adminOnly = false } = {}) {
   });
 }
 
+// —————————— Состояние для пересылки контента по ссылке ——————————
+const adminReplyState = {}; // { adminId: { chatId: ..., messageId: ... } }
+
+// —————————— Обработка ссылки на сообщение ——————————
+bot.on('message', safeHandler(async (ctx) => {
+  if (!isAdmin(ctx)) return;
+
+  const text = ctx.message.text;
+  if (!text) return;
+
+  // Проверка ссылки формата t.me/c/123456789/42
+  const match = text.match(/t\.me\/c\/(\d+)\/(\d+)/);
+  if (match) {
+    const chatId = -1000000000000 + parseInt(match[1]);
+    const messageId = parseInt(match[2]);
+
+    adminReplyState[ctx.from.id] = { chatId, messageId };
+    await ctx.reply('✅ Ссылка принята. Теперь отправьте содержимое для пересылки.');
+    return;
+  }
+}));
+
+// —————————— Пересылка содержимого в ответ на выбранное сообщение ——————————
+bot.on('message', safeHandler(async (ctx) => {
+  if (!isAdmin(ctx)) return;
+
+  const state = adminReplyState[ctx.from.id];
+  if (!state) return; // Сначала нужно отправить ссылку
+
+  const { chatId, messageId } = state;
+
+  try {
+    if (ctx.message.text) {
+      await ctx.telegram.sendMessage(chatId, ctx.message.text, { reply_to_message_id: messageId });
+    }
+    if (ctx.message.photo) {
+      await ctx.telegram.sendPhoto(chatId, ctx.message.photo[ctx.message.photo.length - 1].file_id, { caption: ctx.message.caption, reply_to_message_id: messageId });
+    }
+    if (ctx.message.video) {
+      await ctx.telegram.sendVideo(chatId, ctx.message.video.file_id, { caption: ctx.message.caption, reply_to_message_id: messageId });
+    }
+    if (ctx.message.sticker) {
+      await ctx.telegram.sendSticker(chatId, ctx.message.sticker.file_id, { reply_to_message_id: messageId });
+    }
+    if (ctx.message.document) {
+      await ctx.telegram.sendDocument(chatId, ctx.message.document.file_id, { caption: ctx.message.caption, reply_to_message_id: messageId });
+    }
+    if (ctx.message.poll) {
+      await ctx.telegram.sendPoll(
+        chatId,
+        ctx.message.poll.question,
+        ctx.message.poll.options.map(o => o.text),
+        { is_anonymous: ctx.message.poll.is_anonymous, type: ctx.message.poll.type, reply_to_message_id: messageId }
+      );
+    }
+
+    await ctx.reply('✅ Сообщение отправлено в ответ на выбранное сообщение.');
+    delete adminReplyState[ctx.from.id]; // Очищаем состояние после пересылки
+  } catch (err) {
+    await ctx.reply(`❌ Ошибка при пересылке: ${err.message}`);
+  }
+}));
+
 // —————————— Управления разрешёнными чатами ——————————
 async function checkBotChats(bot) {
   for (const chatId of ACTIVE_CHATS.slice()) {
@@ -297,88 +360,6 @@ bot.on('message', safeHandler(async (ctx) => {
     }
   }
 }));
-
-// —————————— Пересылка сообщений по ссылке для админов ——————————
-const replyTargets = {}; // хранилище целей для пересылки { userId: { chatId, messageId } }
-
-function parseMessageLink(link) {
-  try {
-    const url = new URL(link);
-    const parts = url.pathname.split('/').filter(p => p); // ["c", "123456789", "12"]
-    if (parts[0] === 'c' && parts.length === 3) {
-      const chatId = -1000000000000 + parseInt(parts[1]); // формируем chatId
-      const messageId = parseInt(parts[2]);
-      return { chatId, messageId };
-    }
-  } catch (err) {}
-  return null;
-}
-
-// Команда для установки цели пересылки
-bot.command('set_target', restrictedCommand(async (ctx) => {
-  const args = ctx.message.text.split(' ');
-  if (args.length < 2) return ctx.reply('❌ Укажите ссылку на сообщение: /set_target <ссылка>');
-  const target = parseMessageLink(args[1]);
-  if (!target) return ctx.reply('❌ Неверная ссылка или формат.');
-
-  replyTargets[ctx.from.id] = target;
-  await ctx.reply('✅ Цель пересылки установлена! Теперь отправьте сообщение, которое нужно переслать.');
-}, { adminOnly: true }));
-
-// Команда для отмены цели
-bot.command('cancel_target', restrictedCommand(async (ctx) => {
-  delete replyTargets[ctx.from.id];
-  await ctx.reply('✅ Цель пересылки отменена.');
-}, { adminOnly: true }));
-
-// Обработка сообщений для пересылки
-bot.on('message', restrictedCommand(async (ctx) => {
-  const adminId = ctx.from.id;
-  if (!isAdmin(ctx)) return; // только для админов
-  if (!replyTargets[adminId]) return; // цель не установлена
-
-  const target = replyTargets[adminId];
-
-  try {
-    // Текст
-    if (ctx.message.text) {
-      await ctx.telegram.sendMessage(target.chatId, ctx.message.text, { reply_to_message_id: target.messageId });
-    }
-    // Фото
-    else if (ctx.message.photo) {
-      await ctx.telegram.sendPhoto(target.chatId, ctx.message.photo[ctx.message.photo.length - 1].file_id, { caption: ctx.message.caption, reply_to_message_id: target.messageId });
-    }
-    // Видео
-    else if (ctx.message.video) {
-      await ctx.telegram.sendVideo(target.chatId, ctx.message.video.file_id, { caption: ctx.message.caption, reply_to_message_id: target.messageId });
-    }
-    // Документы
-    else if (ctx.message.document) {
-      await ctx.telegram.sendDocument(target.chatId, ctx.message.document.file_id, { caption: ctx.message.caption, reply_to_message_id: target.messageId });
-    }
-    // Стикеры
-    else if (ctx.message.sticker) {
-      await ctx.telegram.sendSticker(target.chatId, ctx.message.sticker.file_id, { reply_to_message_id: target.messageId });
-    }
-    // Анимированные GIF
-    else if (ctx.message.animation) {
-      await ctx.telegram.sendAnimation(target.chatId, ctx.message.animation.file_id, { caption: ctx.message.caption, reply_to_message_id: target.messageId });
-    }
-    // Опросы
-    else if (ctx.message.poll) {
-      const poll = ctx.message.poll;
-      await ctx.telegram.sendPoll(target.chatId, poll.question, poll.options.map(o => o.text), { is_anonymous: poll.is_anonymous, type: poll.type, reply_to_message_id: target.messageId });
-    }
-    else {
-      return ctx.reply('❌ Этот тип сообщения пока не поддерживается.');
-    }
-
-    await ctx.reply('✅ Сообщение успешно переслано!');
-  } catch (err) {
-    console.error('Ошибка при пересылке:', err);
-    await ctx.reply(`❌ Ошибка при пересылке: ${err.message}`);
-  }
-}, { adminOnly: true }));
 
 // —————————— Экспорт модуля для сервера ——————————
 module.exports = async (req, res) => {
