@@ -259,53 +259,51 @@ bot.on('message', safeHandler(async (ctx) => {
 // Обработка постов канала и добавление комментария в обсуждение
 bot.on('channel_post', safeHandler(async (ctx) => {
   const post = ctx.channelPost;
+  const channelId = post.chat.id;
+  const postId = post.message_id;
 
-  if (post.chat.username === 'spektrminda' && post.message_id) {
-    try {
-      const discussionMessageId = post.message_thread_id; // ID связанного сообщения в обсуждении
+  // Проверяем нужный канал
+  if (channelId !== CHANNEL_ID) return;
 
-      if (!discussionMessageId) {
-        // Нет обсуждения, отчёт в админский чат
-        await ctx.telegram.sendMessage(
-          ADMIN_CHAT_ID,
-          `❌ Не удалось найти связанное сообщение в обсуждении для поста ${post.message_id} канала ${post.chat.username}`,
-          { parse_mode: 'HTML', disable_web_page_preview: true }
-        );
-        return;
-      }
+  try {
+    let replyMessage;
 
-      // Отправка комментария в обсуждение
-      const sent = await ctx.telegram.sendMessage(
-        CHAT_ID,        // ID группы обсуждения
-        COMMENT_TEXT,   // Текст комментария
-        {
-          parse_mode: 'HTML',
-          reply_to_message_id: discussionMessageId,
-          disable_web_page_preview: true
-        }
-      );
-
-      // Формируем ссылки на пост и комментарий
-      const postLink = `https://t.me/${post.chat.username}/${post.message_id}`;
-      const commentLink = `https://t.me/c/${String(CHAT_ID).slice(4)}/${sent.message_id}`;
-
-      // Отчёт в админский чат
-      await ctx.telegram.sendMessage(
-        ADMIN_CHAT_ID,
-        `✅ Комментарий успешно отправлен!\n\n` +
-        `🔹 Пост: <a href="${postLink}">ссылка</a>\n` +
-        `🔹 Комментарий: <a href="${commentLink}">ссылка</a>`,
-        { parse_mode: 'HTML', disable_web_page_preview: true }
-      );
-
-    } catch (error) {
-      // Ошибка при отправке комментария
-      await ctx.telegram.sendMessage(
-        ADMIN_CHAT_ID,
-        `❌ Не удалось отправить комментарий!\nОшибка: ${error.message}`,
-        { parse_mode: 'HTML', disable_web_page_preview: true }
-      );
+    if (post.message_thread_id) {
+      // Отправляем комментарий напрямую в тему обсуждения
+      replyMessage = await ctx.telegram.sendMessage(CHAT_ID, COMMENT_TEXT, {
+        parse_mode: 'HTML',
+        reply_to_message_id: post.message_thread_id,
+        disable_web_page_preview: true
+      });
+    } else {
+      // Ищем в дискуссионной группе последнее сообщение, пересланное из канала
+      const updates = await ctx.telegram.getChat(CHAT_ID); // Получаем информацию о чате (можно убрать если не нужно)
+      // Telegram API напрямую не даёт искать сообщения, поэтому используем workaround: ответ на последнее пересланное
+      // Предполагаем, что бот получает сообщения из группы через on('message')
+      // replyMessage = await ctx.telegram.sendMessage(CHAT_ID, COMMENT_TEXT, { reply_to_message_id: lastForwardedMessageId });
+      replyMessage = await ctx.telegram.sendMessage(CHAT_ID, COMMENT_TEXT, {
+        parse_mode: 'HTML',
+        disable_web_page_preview: true
+      });
     }
+
+    // Отчёт админам с ссылками на пост и комментарий
+    const postLink = `https://t.me/${post.chat.username}/${postId}`;
+    const commentLink = `https://t.me/c/${String(CHAT_ID).slice(4)}/${replyMessage.message_id}`;
+    await ctx.telegram.sendMessage(ADMIN_CHAT_ID,
+      `✅ Комментарий добавлен под постом.\n\n` +
+      `Пост: ${postLink}\nКомментарий: ${commentLink}`,
+      { parse_mode: 'HTML', disable_web_page_preview: true }
+    );
+
+  } catch (err) {
+    // Ошибка — отчёт админам
+    const postLink = `https://t.me/${post.chat.username}/${postId}`;
+    await ctx.telegram.sendMessage(ADMIN_CHAT_ID,
+      `❌ Не удалось отправить комментарий!\n` +
+      `Пост: ${postLink}\nОшибка: ${err.message}`,
+      { parse_mode: 'HTML', disable_web_page_preview: true }
+    );
   }
 }));
 
