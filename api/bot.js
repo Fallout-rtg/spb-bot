@@ -256,33 +256,46 @@ bot.on('message', safeHandler(async (ctx) => {
 }));
 
 // Обработка новых постов в канале
-bot.on('channel_post', safeHandler(async (ctx) => {
-  const post = ctx.channelPost;
-  const postChannelId = post.chat.id;
+bot.on('message', safeHandler(async (ctx) => {
+  const msg = ctx.message;
+  const chatId = msg.chat.id;
 
-  // Проверяем, что это нужный канал
-  if (postChannelId === CHANNEL_ID) {
+  // Игнорируем сообщения не из группы обсуждения
+  if (chatId !== CHAT_ID) return;
+
+  // Проверяем, что сообщение пришло из канала
+  if (msg.forward_from_chat && msg.forward_from_chat.id === CHANNEL_ID) {
     try {
-      // Отправляем комментарий в группу обсуждения в ответ на этот пост
-      await ctx.telegram.sendMessage(
-        CHAT_ID, // группа обсуждения
+      // Отправляем комментарий в ответ на это сообщение
+      const commentMsg = await ctx.telegram.sendMessage(
+        CHAT_ID,
         COMMENT_TEXT,
         {
           parse_mode: 'HTML',
-          reply_to_message_id: post.message_id,
-          disable_web_page_preview: true
+          disable_web_page_preview: true,
+          reply_to_message_id: msg.message_id
         }
       );
 
-      // Отчёт в админский чат
+      // Формируем ссылки
+      const channelLink = `https://t.me/${CHANNEL_USERNAME}/${msg.message_id}`;
+      const commentLink = `https://t.me/c/${CHAT_ID.toString().slice(4)}/${commentMsg.message_id}`;
+
+      // Отчёт админам
       await ctx.telegram.sendMessage(
         ADMIN_CHAT_ID,
-        `✅ Комментарий добавлен под постом канала (ID: ${post.message_id})`,
-        { parse_mode: 'HTML', disable_web_page_preview: true }
+        `✅ Комментарий под постом успешно отправлен.\n` +
+        `Пост канала: <a href="${channelLink}">ссылка</a>\n` +
+        `Комментарий бота: <a href="${commentLink}">ссылка</a>`,
+        { parse_mode: 'HTML' }
       );
-
     } catch (error) {
-      console.error('Ошибка при отправке комментария в обсуждение:', error);
+      console.error('Ошибка при отправке комментария:', error);
+      await ctx.telegram.sendMessage(
+        ADMIN_CHAT_ID,
+        `⚠️ Ошибка при отправке комментария под постом: ${error.message}`,
+        { parse_mode: 'HTML' }
+      );
     }
   }
 }));
