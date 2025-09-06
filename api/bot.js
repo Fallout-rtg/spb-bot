@@ -258,9 +258,11 @@ bot.on('message', safeHandler(async (ctx) => {
 // —————————— Комментарии под постами в канале ——————————
 bot.on('channel_post', safeHandler(async (ctx) => {
   try {
-    await ctx.reply(COMMENT_TEXT, {
+    const channelId = ctx.channelPost.chat.id;
+    await ctx.telegram.sendMessage(channelId, COMMENT_TEXT, {
       parse_mode: 'HTML',
-      disable_web_page_preview: true
+      disable_web_page_preview: true,
+      reply_to_message_id: ctx.channelPost.message_id
     });
   } catch (error) {
     console.error('Ошибка при добавлении комментария под постом:', error);
