@@ -257,33 +257,40 @@ bot.on('message', safeHandler(async (ctx) => {
 }));
 
 // Обработка новых постов в канале
-bot.on('channel_post', safeHandler(async (ctx) => {
-  const post = ctx.channelPost;
-  const channelUsername = post.chat.username;
+bot.on('message', safeHandler(async (ctx) => {
+  const msg = ctx.message;
 
-  // Проверяем, что это нужный канал
-  if (channelUsername !== 'spektrminda') return;
+  // Проверяем, что сообщение пришло в обсуждение
+  if (msg.chat.id === CHAT_ID) {
+    // Проверяем, что сообщение автоматически переслано из канала
+    if (msg.forward_from_chat && msg.forward_from_chat.username === 'spektrminda') {
+      try {
+        // Отправляем комментарий в ответ на пересланное сообщение
+        const comment = await ctx.telegram.sendMessage(
+          CHAT_ID,
+          COMMENT_TEXT,
+          {
+            parse_mode: 'HTML',
+            reply_to_message_id: msg.message_id,
+            disable_web_page_preview: true
+          }
+        );
 
-  try {
-    // Отправляем комментарий в обсуждение канала
-    await ctx.telegram.sendMessage(CHAT_ID, COMMENT_TEXT, {
-      parse_mode: 'HTML',
-      reply_to_message_id: post.message_id,
-      disable_web_page_preview: true
-    });
+        // Формируем ссылки на пост канала и на комментарий
+        const postLink = `https://t.me/${msg.forward_from_chat.username}/${msg.forward_from_message_id}`;
+        const commentLink = `https://t.me/c/${String(CHAT_ID).slice(4)}/${comment.message_id}`;
 
-    // Формируем ссылку на пост
-    const postLink = `https://t.me/${channelUsername}/${post.message_id}`;
+        // Отправляем отчёт админам
+        await ctx.telegram.sendMessage(
+          ADMIN_CHAT_ID,
+          `✅ Комментарий добавлен.\n📌 Пост: ${postLink}\n📌 Комментарий: ${commentLink}`,
+          { parse_mode: 'HTML', disable_web_page_preview: true }
+        );
 
-    // Отчёт в админский чат
-    await ctx.telegram.sendMessage(
-      ADMIN_CHAT_ID,
-      `✅ Комментарий с правилами добавлен к посту.\n📌 Пост: ${postLink}\n📌 Комментарий отправлен в обсуждение.`,
-      { parse_mode: 'HTML', disable_web_page_preview: true }
-    );
-
-  } catch (err) {
-    console.error('Ошибка при добавлении комментария в обсуждение:', err.message);
+      } catch (err) {
+        console.error('Ошибка при отправке комментария в обсуждение:', err);
+      }
+    }
   }
 }));
 
