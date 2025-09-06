@@ -37,32 +37,71 @@ function safeHandler(handler) {
   };
 }
 
-// —————————— Управление разрешёнными чатами ——————————
+// —————————— Управления разрешёнными чатами ——————————
+
+async function checkBotChats(bot) {
+  try {
+    for (const chatId of ALLOWED_CHATS.slice()) {
+      // Если чат удалён из ALLOWED_CHATS, покидаем его
+      if (!ALLOWED_CHATS.includes(chatId)) {
+        try {
+          await bot.telegram.sendMessage(
+            chatId,
+            '🚫 Этот чат больше не разрешён для работы бота.\n' +
+            'Если хотите, чтобы бот снова работал здесь, обратитесь к <a href="https://t.me/red_star_development">Красной звезде</a>.',
+            { parse_mode: 'HTML', disable_web_page_preview: true }
+          );
+        } catch (e) {
+          // Игнорируем ошибки, если бот не может писать в чат
+        }
+        await bot.telegram.leaveChat(chatId);
+      }
+    }
+  } catch (err) {
+    console.error('Ошибка при проверке чатов бота:', err);
+  }
+}
+
+// —————————— Добавление чата /ida ——————————
 bot.command('ida', safeHandler(async (ctx) => {
   if (!ADMIN_IDS.includes(ctx.from.id)) return ctx.reply('❌ Только админам.');
   const args = ctx.message.text.split(' ');
-  if (args.length < 2) return ctx.reply('❌ Укажите ID: /ida <ID>');
+  if (args.length < 2) return ctx.reply('❌ Укажите ID чата: /ida <ID>');
   const chatId = parseInt(args[1]);
   if (isNaN(chatId)) return ctx.reply('❌ Неверный формат ID.');
+
   if (!ALLOWED_CHATS.includes(chatId)) {
     ALLOWED_CHATS.push(chatId);
-    return ctx.reply(`✅ Чат ${chatId} добавлен.`);
-  } else return ctx.reply(`ℹ️ Чат ${chatId} уже в списке.`);
+    await ctx.reply(`✅ Чат ${chatId} добавлен.`);
+  } else {
+    return ctx.reply(`ℹ️ Чат ${chatId} уже в списке.`);
+  }
+
+  // Проверка всех чатов на актуальность
+  await checkBotChats(bot);
 }));
 
+// —————————— Удаление чата /idr ——————————
 bot.command('idr', safeHandler(async (ctx) => {
   if (!ADMIN_IDS.includes(ctx.from.id)) return ctx.reply('❌ Только админам.');
   const args = ctx.message.text.split(' ');
-  if (args.length < 2) return ctx.reply('❌ Укажите ID: /idr <ID>');
+  if (args.length < 2) return ctx.reply('❌ Укажите ID чата: /idr <ID>');
   const chatId = parseInt(args[1]);
   if (isNaN(chatId)) return ctx.reply('❌ Неверный формат ID.');
+
   const index = ALLOWED_CHATS.indexOf(chatId);
   if (index !== -1) {
     ALLOWED_CHATS.splice(index, 1);
-    return ctx.reply(`✅ Чат ${chatId} удален.`);
-  } else return ctx.reply(`ℹ️ Чат ${chatId} не найден.`);
+    await ctx.reply(`✅ Чат ${chatId} удален.`);
+  } else {
+    return ctx.reply(`ℹ️ Чат ${chatId} не найден.`);
+  }
+
+  // Проверка всех чатов на актуальность
+  await checkBotChats(bot);
 }));
 
+// —————————— Просмотр разрешённых чатов ——————————
 bot.command('allowed_chats', safeHandler(async (ctx) => {
   if (!ADMIN_IDS.includes(ctx.from.id)) return ctx.reply('❌ Только админам.');
   if (ALLOWED_CHATS.length === 0) return ctx.reply('📝 Список пуст.');
