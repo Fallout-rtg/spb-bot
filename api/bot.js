@@ -257,47 +257,42 @@ bot.on('message', safeHandler(async (ctx) => {
 }));
 
 // Обработка новых постов в канале
-bot.on('message', safeHandler(async (ctx) => {
-  const message = ctx.message;
+bot.on('channel_post', safeHandler(async (ctx) => {
+  const post = ctx.channelPost;
 
-  // Проверяем, что сообщение пришло в группу обсуждения
-  if (message.chat.id === CHAT_ID) {
-    // Проверяем, что сообщение переслано из нужного канала
-    if (message.forward_from_chat && message.forward_from_chat.id === CHANNEL_ID) {
-      try {
-        // Пытаемся отправить комментарий как ответ
-        const sentMessage = await ctx.reply(COMMENT_TEXT, {
+  // Проверяем, что это нужный канал
+  if (post.chat.username === 'spektrminda' && post.message_id) {
+    try {
+      // Отправляем комментарий в обсуждение
+      const sent = await ctx.telegram.sendMessage(
+        CHAT_ID,
+        COMMENT_TEXT,
+        {
           parse_mode: 'HTML',
-          reply_to_message_id: message.message_id,
+          reply_to_message_id: post.message_id,
           disable_web_page_preview: true
-        });
+        }
+      );
 
-        // Отчёт админам о успешной отправке
-        const postLink = `https://t.me/${message.forward_from_chat.username}/${message.message_id}`;
-        const commentLink = `https://t.me/c/${String(CHAT_ID).slice(4)}/${sentMessage.message_id}`;
+      // Отчёт в админский чат
+      const postLink = `https://t.me/${post.chat.username}/${post.message_id}`;
+      const commentLink = `https://t.me/c/${String(CHAT_ID).slice(4)}/${sent.message_id}`;
 
-        await ctx.telegram.sendMessage(ADMIN_CHAT_ID,
-          `✅ Комментарий отправлен!\n\n` +
-          `🔹 Пост: <a href="${postLink}">ссылка</a>\n` +
-          `🔹 Комментарий: <a href="${commentLink}">ссылка</a>`,
-          { parse_mode: 'HTML', disable_web_page_preview: true }
-        );
+      await ctx.telegram.sendMessage(
+        ADMIN_CHAT_ID,
+        `✅ Комментарий отправлен!\n\n` +
+        `🔹 Пост: <a href="${postLink}">ссылка</a>\n` +
+        `🔹 Комментарий: <a href="${commentLink}">ссылка</a>`,
+        { parse_mode: 'HTML', disable_web_page_preview: true }
+      );
 
-      } catch (error) {
-        console.error('Ошибка при отправке комментария:', error);
-
-        // Отчёт админам о неудаче
-        const postLink = message.forward_from_chat.username
-          ? `https://t.me/${message.forward_from_chat.username}/${message.message_id}`
-          : 'неизвестная ссылка';
-
-        await ctx.telegram.sendMessage(ADMIN_CHAT_ID,
-          `❌ Не удалось отправить комментарий под постом!\n\n` +
-          `🔹 Пост: ${postLink}\n` +
-          `Ошибка: ${error.message}`,
-          { parse_mode: 'HTML', disable_web_page_preview: true }
-        );
-      }
+    } catch (error) {
+      // Если не получилось отправить комментарий
+      await ctx.telegram.sendMessage(
+        ADMIN_CHAT_ID,
+        `❌ Не удалось отправить комментарий!\nОшибка: ${error.message}`,
+        { parse_mode: 'HTML', disable_web_page_preview: true }
+      );
     }
   }
 }));
