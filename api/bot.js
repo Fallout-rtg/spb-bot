@@ -257,49 +257,67 @@ bot.on('message', safeHandler(async (ctx) => {
 }));
 
 // Обработка постов канала и добавление комментария в обсуждение
-// Словарь для хранения соответствий: post_id канала -> message_id в обсуждении
-const postMap = {};
-
-// Отслеживаем пересланные сообщения в дискуссионной группе
-bot.on('message', safeHandler(async (ctx) => {
-  const msg = ctx.message;
-  if (!msg.forward_from_chat) return;
-  if (msg.forward_from_chat.id !== CHANNEL_ID) return;
-
-  // Сохраняем соответствие: оригинальный пост -> сообщение в обсуждении
-  postMap[msg.forward_from_message_id] = msg.message_id;
-}));
-
-// Обработка новых постов в канале
 bot.on('channel_post', safeHandler(async (ctx) => {
   const post = ctx.channelPost;
-  const channelPostId = post.message_id;
+  const channelId = post.chat.id;
+  const postId = post.message_id;
+  const channelUsername = post.chat.username;
 
-  // Ищем пересланное сообщение в дискуссионной группе
-  const discussionMessageId = postMap[channelPostId];
+  if (channelUsername !== 'spektrminda') return;
 
   try {
-    let replyOptions = { parse_mode: 'HTML', disable_web_page_preview: true };
+    let targetMessage;
+    const maxAttempts = 5;
+    const delayMs = 2000; // 2 секунды между проверками
 
-    if (discussionMessageId) {
-      replyOptions.reply_to_message_id = discussionMessageId;
+    // Пытаемся найти пересланное сообщение в дискуссии
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      const discussionMessages = await ctx.telegram.getChatHistory(CHAT_ID, { limit: 100 });
+
+      targetMessage = discussionMessages.find(m =>
+        m.forward_from_chat?.id === channelId &&
+        m.forward_from_message_id === postId
+      );
+
+      if (targetMessage) break;
+      await new Promise(r => setTimeout(r, delayMs));
     }
 
-    // Отправляем комментарий в обсуждение
-    const comment = await ctx.telegram.sendMessage(CHAT_ID, COMMENT_TEXT, replyOptions);
+    let sentMessage;
 
-    // Отчёт админам с ссылками на пост и комментарий
-    const postLink = `https://t.me/${post.chat.username}/${channelPostId}`;
-    const commentLink = `https://t.me/c/${String(CHAT_ID).slice(4)}/${comment.message_id}`;
-    await ctx.telegram.sendMessage(ADMIN_CHAT_ID,
-      `✅ Комментарий добавлен под постом.\nПост: ${postLink}\nКомментарий: ${commentLink}`,
-      { parse_mode: 'HTML', disable_web_page_preview: true }
-    );
+    if (targetMessage) {
+      sentMessage = await ctx.telegram.sendMessage(
+        CHAT_ID,
+        COMMENT_TEXT,
+        {
+          reply_to_message_id: targetMessage.message_id,
+          parse_mode: 'HTML',
+          disable_web_page_preview: true
+        }
+      );
+    } else {
+      // Если не нашли пересланное сообщение, просто отправляем без reply
+      sentMessage = await ctx.telegram.sendMessage(
+        CHAT_ID,
+        COMMENT_TEXT,
+        { parse_mode: 'HTML', disable_web_page_preview: true }
+      );
 
-  } catch (err) {
-    const postLink = `https://t.me/${post.chat.username}/${channelPostId}`;
-    await ctx.telegram.sendMessage(ADMIN_CHAT_ID,
-      `❌ Не удалось отправить комментарий!\nПост: ${postLink}\nОшибка: ${err.message}`,
+      const postLink = `https://t.me/${channelUsername}/${postId}`;
+      await ctx.telegram.sendMessage(
+        ADMIN_CHAT_ID,
+        `❌ Не удалось найти связанное сообщение в обсуждении для поста ${postId} канала ${channelUsername}\n` +
+        `Ссылка на пост: ${postLink}\n` +
+        `Ссылка на отправленный комментарий: [сообщение](https://t.me/c/${String(CHAT_ID).slice(4)}/${sentMessage.message_id})`,
+        { parse_mode: 'Markdown', disable_web_page_preview: true }
+      );
+    }
+
+  } catch (error) {
+    console.error('Ошибка при добавлении комментария в обсуждение:', error);
+    await ctx.telegram.sendMessage(
+      ADMIN_CHAT_ID,
+      `❌ Ошибка при добавлении комментария для поста ${postId} канала ${channelUsername}\nОшибка: ${error.message}`,
       { parse_mode: 'HTML', disable_web_page_preview: true }
     );
   }
